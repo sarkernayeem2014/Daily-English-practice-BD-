@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account profile details",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "UserProgress": {
+      "title": "UserProgress",
+      "description": "Gamified English translation learning progress, XP, completed sentences and badges",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "xp": { "type": "number" },
+        "streakCount": { "type": "number" },
+        "personalBestStreak": { "type": "number" },
+        "lastActiveDate": { "type": "string" },
+        "totalScore": { "type": "number" },
+        "consecutiveCorrect": { "type": "number" },
+        "maxConsecutiveCorrect": { "type": "number" },
+        "studentName": { "type": "string" },
+        "theme": { "type": "string" },
+        "soundEnabled": { "type": "boolean" },
+        "reducedMotion": { "type": "boolean" },
+        "unlockedTiers": { "type": "array" },
+        "correctIds": { "type": "object" },
+        "attemptedIds": { "type": "object" },
+        "struggleIds": { "type": "object" },
+        "bookmarkedIds": { "type": "object" },
+        "awardedXpIds": { "type": "object" },
+        "earnedBadges": { "type": "object" },
+        "completedDailyDates": { "type": "object" },
+        "todayDailyAnswers": { "type": "object" },
+        "userAnswers": { "type": "object" },
+        "grammarTipsViewedIds": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "xp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Stores user account profile information"
+    },
+    "/users/{userId}/progress/current": {
+      "schema": "UserProgress",
+      "description": "Stores the user's gamified learning progress and XP"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Daily English Practice BD",
+  "description": "বাংলা থেকে ইংরেজি অনুবাদ অনুশীলন প্ল্যাটফর্ম — Learn English translation with 500+ categorized Bengali sentences, alternative answers, grammar tips, and progress tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
