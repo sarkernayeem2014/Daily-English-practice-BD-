@@ -22,6 +22,11 @@ export interface UserProfileData {
   photoURL?: string;
   createdAt: string;
   updatedAt: string;
+  fullName?: string;
+  institution?: string;
+  classLevel?: string;
+  phone?: string;
+  profileCompleted?: boolean;
 }
 
 /**
@@ -178,4 +183,66 @@ export async function logout(): Promise<void> {
 
 // Alias for logout
 export const logoutUser = logout;
+
+/**
+ * Converts Bengali numerical digits to English digits
+ * e.g. "০১৭১২৩৪৫৬৭৮" -> "01712345678"
+ */
+export function convertBanglaDigitsToEnglish(input: string): string {
+  if (!input) return '';
+  const bnDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  return input.replace(/[০-৯]/g, (char) => {
+    const idx = bnDigits.indexOf(char);
+    return idx !== -1 ? String(idx) : char;
+  });
+}
+
+/**
+ * Validates a Bangladeshi mobile phone number
+ * Format: 11 digits, starts with 013, 014, 015, 016, 017, 018, 019
+ */
+export function validateBangladeshiPhone(phone: string): boolean {
+  if (!phone) return true; // Optional field
+  const normalized = convertBanglaDigitsToEnglish(phone).replace(/[\s\-+]/g, '');
+  const cleanPhone = normalized.startsWith('88') ? normalized.slice(2) : normalized;
+  return /^01[3-9]\d{8}$/.test(cleanPhone);
+}
+
+/**
+ * Fetch user profile from /users/{uid}
+ */
+export async function getUserProfile(uid: string): Promise<UserProfileData | null> {
+  const userDocPath = `users/${uid}`;
+  try {
+    const snap = await getDoc(doc(db, 'users', uid));
+    if (!snap.exists()) return null;
+    return snap.data() as UserProfileData;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, userDocPath);
+    return null;
+  }
+}
+
+/**
+ * Update user profile at /users/{uid} using setDoc with merge: true
+ * Guarantees uid is always present and matches auth.currentUser.uid
+ */
+export async function updateUserProfile(
+  uid: string,
+  profileUpdates: Partial<UserProfileData>
+): Promise<void> {
+  const userDocPath = `users/${uid}`;
+  try {
+    const payload = {
+      ...profileUpdates,
+      uid, // Guaranteed to always match user's auth UID
+      updatedAt: new Date().toISOString(),
+    };
+    await setDoc(doc(db, 'users', uid), payload, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, userDocPath);
+    throw error;
+  }
+}
+
 

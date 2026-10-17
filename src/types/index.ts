@@ -107,4 +107,22 @@ export type ViewMode =
   | 'browse'
   | 'daily'
   | 'certificate'
-  | 'guide';
+  | 'guide'
+  | 'profile';
+
+export const CLASS_LEVEL_OPTIONS = [
+  '৬ষ্ঠ',
+  '৭ম',
+  '৮ম',
+  '৯ম',
+  '১০ম',
+  'একাদশ',
+  'দ্বাদশ',
+  'ডিগ্রি/অনার্স',
+  'মাস্টার্স',
+  'চাকরিজীবী',
+  'অন্যান্য',
+] as const;
+
+export type ClassLevel = (typeof CLASS_LEVEL_OPTIONS)[number];
+

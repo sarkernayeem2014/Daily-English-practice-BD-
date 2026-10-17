@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ViewMode, UserProgress } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { UserProfileData } from '../firebase/authService';
 import { 
   BookOpen, 
   RotateCcw, 
@@ -16,7 +17,9 @@ import {
   LogOut,
   X,
   RefreshCw,
-  ChevronRight
+  ChevronRight,
+  User,
+  AlertCircle
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -26,6 +29,8 @@ interface NavbarProps {
   totalSentences: number;
   onOpenSettings: () => void;
   onResetProgress?: () => void;
+  onRequestLogout?: () => void;
+  userProfile?: UserProfileData | null;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -35,11 +40,15 @@ export const Navbar: React.FC<NavbarProps> = ({
   totalSentences: _totalSentences,
   onOpenSettings,
   onResetProgress,
+  onRequestLogout,
+  userProfile,
 }) => {
   const { currentUser, openAuthModal, signOut } = useAuth();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const avatarButtonRef = useRef<HTMLButtonElement>(null);
+  const desktopDropdownRef = useRef<HTMLDivElement>(null);
+  const mobileDropdownRef = useRef<HTMLDivElement>(null);
+  const desktopAvatarRef = useRef<HTMLButtonElement>(null);
+  const mobileAvatarRef = useRef<HTMLButtonElement>(null);
 
   const struggleCount = Object.keys(progress.struggleIds || {}).length;
   const bookmarkedCount = Object.keys(progress.bookmarkedIds || {}).length;
@@ -48,21 +57,24 @@ export const Navbar: React.FC<NavbarProps> = ({
   const today = new Date().toISOString().split('T')[0];
   const isDailyDone = !!progress.completedDailyDates?.[today];
 
-  const userDisplayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'শিক্ষার্থী';
+  const isProfileCompleted = !!userProfile?.profileCompleted;
+  const userDisplayName = userProfile?.fullName || userProfile?.displayName || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'শিক্ষার্থী';
   const userInitials = (userDisplayName[0] || 'U').toUpperCase();
+  const photoURL = userProfile?.photoURL || currentUser?.photoURL;
 
-  // Close dropdown on outside click or Esc key
+  // Close dropdown on outside click/tap or Esc key
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent | TouchEvent) => {
-      if (
-        isDropdownOpen &&
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node) &&
-        avatarButtonRef.current &&
-        !avatarButtonRef.current.contains(event.target as Node)
-      ) {
-        setIsDropdownOpen(false);
-      }
+      if (!isDropdownOpen) return;
+      const target = event.target as Node;
+      if (!target) return;
+
+      if (desktopDropdownRef.current && desktopDropdownRef.current.contains(target)) return;
+      if (mobileDropdownRef.current && mobileDropdownRef.current.contains(target)) return;
+      if (desktopAvatarRef.current && desktopAvatarRef.current.contains(target)) return;
+      if (mobileAvatarRef.current && mobileAvatarRef.current.contains(target)) return;
+
+      setIsDropdownOpen(false);
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -200,8 +212,9 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Profile Avatar Button / Sign In */}
           {!currentUser ? (
             <button
+              type="button"
               onClick={() => openAuthModal('signin')}
-              className="h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer ml-1"
+              className="h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer ml-1 select-none touch-manipulation active:scale-95"
             >
               <LogIn className="w-4 h-4" />
               <span>লগইন</span>
@@ -209,60 +222,103 @@ export const Navbar: React.FC<NavbarProps> = ({
           ) : (
             <div className="relative">
               <button
-                ref={avatarButtonRef}
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="w-10 h-10 rounded-full p-0.5 bg-gradient-to-tr from-blue-500 to-indigo-600 hover:scale-105 active:scale-95 transition-all shadow-sm cursor-pointer flex items-center justify-center"
-                title={`${userDisplayName} - প্রোফাইল মেনু`}
-                aria-label="ইউজার প্রোফাইল মেনু"
+                ref={desktopAvatarRef}
+                type="button"
+                onClick={() => setIsDropdownOpen((prev) => !prev)}
+                className={`relative z-20 w-10 h-10 rounded-full p-0.5 bg-gradient-to-tr from-blue-500 to-indigo-600 transition-all shadow-sm cursor-pointer flex items-center justify-center select-none touch-manipulation hover:scale-105 active:scale-95 active:ring-2 active:ring-blue-400 active:ring-offset-2 ${
+                  isDropdownOpen ? 'ring-2 ring-blue-500 ring-offset-2 scale-105' : ''
+                }`}
+                title={`${userDisplayName} - অ্যাকাউন্ট মেনু`}
+                aria-label="অ্যাকাউন্ট মেনু"
+                aria-expanded={isDropdownOpen}
               >
-                {currentUser.photoURL ? (
+                {photoURL ? (
                   <img
-                    src={currentUser.photoURL}
+                    src={photoURL}
                     alt={userDisplayName}
-                    className="w-full h-full rounded-full object-cover border border-white"
+                    className="w-full h-full rounded-full object-cover border border-white pointer-events-none select-none"
                   />
                 ) : (
-                  <div className="w-full h-full rounded-full bg-blue-600 text-white font-black text-sm flex items-center justify-center border border-white">
+                  <div className="w-full h-full rounded-full bg-blue-600 text-white font-black text-sm flex items-center justify-center border border-white pointer-events-none select-none">
                     {userInitials}
                   </div>
                 )}
               </button>
 
-              {/* Desktop Profile Dropdown Card */}
+              {/* Desktop Profile Dropdown Card (Right-aligned) */}
               {isDropdownOpen && (
                 <div
-                  ref={dropdownRef}
-                  className="absolute right-0 top-13 w-72 bg-white rounded-2xl shadow-xl border border-slate-100 p-3.5 z-50 animate-in fade-in zoom-in-95 duration-150"
+                  ref={desktopDropdownRef}
+                  className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-100 p-3.5 z-50 animate-in fade-in zoom-in-95 duration-150"
                 >
-                  {/* Dropdown User Info */}
-                  <div className="p-3 bg-slate-50/80 rounded-xl mb-2 flex items-center gap-3">
-                    {currentUser.photoURL ? (
-                      <img
-                        src={currentUser.photoURL}
-                        alt={userDisplayName}
-                        className="w-11 h-11 rounded-full object-cover border border-blue-200 shrink-0"
-                      />
-                    ) : (
-                      <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black text-base flex items-center justify-center shrink-0">
-                        {userInitials}
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-bold text-slate-900 truncate">
-                        {userDisplayName}
-                      </div>
-                      <div className="text-xs text-slate-500 truncate">
-                        {currentUser.email}
-                      </div>
-                      <div className="text-[10px] text-blue-600 font-semibold flex items-center gap-1 mt-0.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" /> ক্লাউড সিঙ্কড
+                  {/* 1. Top section: user photo (or first letter), full name, email, and small hint if not completed */}
+                  <div className="p-3 bg-slate-50/90 rounded-xl mb-2 border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      {photoURL ? (
+                        <img
+                          src={photoURL}
+                          alt={userDisplayName}
+                          className="w-11 h-11 rounded-full object-cover border border-blue-200 shrink-0"
+                        />
+                      ) : (
+                        <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black text-base flex items-center justify-center shrink-0 shadow-2xs">
+                          {userInitials}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-bold text-slate-900 truncate">
+                          {userDisplayName}
+                        </div>
+                        <div className="text-xs text-slate-500 truncate">
+                          {currentUser.email}
+                        </div>
                       </div>
                     </div>
+
+                    {/* Small hint if profileCompleted is not true */}
+                    {!isProfileCompleted ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onNavigate('profile');
+                          setIsDropdownOpen(false);
+                        }}
+                        className="mt-2.5 w-full py-1.5 px-2.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200/80 text-amber-900 text-xs font-bold flex items-center justify-between transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>প্রোফাইল সম্পূর্ণ করুন</span>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-amber-500" />
+                      </button>
+                    ) : (
+                      <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 mt-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" /> ক্লাউড সিঙ্কড
+                      </div>
+                    )}
                   </div>
 
-                  {/* Menu Items */}
+                  {/* Menu Items (2 through 5) - each >= 48px */}
                   <div className="space-y-1">
+                    {/* 2. আমার প্রোফাইল */}
                     <button
+                      type="button"
+                      onClick={() => {
+                        onNavigate('profile');
+                        setIsDropdownOpen(false);
+                      }}
+                      className="min-h-[48px] w-full flex items-center justify-between px-3 rounded-xl hover:bg-blue-50/70 text-slate-800 font-bold text-xs transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <User className="w-5 h-5 text-blue-600 shrink-0" />
+                        <span>আমার প্রোফাইল</span>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-400" />
+                    </button>
+
+                    {/* 3. সাহায্য */}
+                    <button
+                      type="button"
                       onClick={() => {
                         onNavigate('guide');
                         setIsDropdownOpen(false);
@@ -271,12 +327,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                     >
                       <div className="flex items-center gap-3">
                         <HelpCircle className="w-5 h-5 text-indigo-600 shrink-0" />
-                        <span>সাহায্য ও ব্যবহার নির্দেশিকা</span>
+                        <span>সাহায্য</span>
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-400" />
                     </button>
 
+                    {/* 4. থিম পরিবর্তন */}
                     <button
+                      type="button"
                       onClick={() => {
                         onOpenSettings();
                         setIsDropdownOpen(false);
@@ -285,12 +343,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                     >
                       <div className="flex items-center gap-3">
                         <Palette className="w-5 h-5 text-blue-600 shrink-0" />
-                        <span>থিম ও সাউন্ড পরিবর্তন</span>
+                        <span>থিম পরিবর্তন</span>
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-400" />
                     </button>
 
+                    {/* 5. প্রগ্রেস রিসেট */}
                     <button
+                      type="button"
                       onClick={() => {
                         onResetProgress?.();
                         setIsDropdownOpen(false);
@@ -305,18 +365,23 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </button>
                   </div>
 
+                  {/* 6. Divider, then red-outlined "লগআউট" button with confirmation dialog */}
                   <div className="my-2 border-t border-slate-100" />
 
-                  {/* Logout Button */}
                   <button
+                    type="button"
                     onClick={() => {
-                      signOut();
                       setIsDropdownOpen(false);
+                      if (onRequestLogout) {
+                        onRequestLogout();
+                      } else {
+                        signOut();
+                      }
                     }}
-                    className="min-h-[48px] w-full flex items-center gap-3 px-3 rounded-xl hover:bg-rose-50 text-rose-600 font-bold text-xs transition-colors cursor-pointer"
+                    className="min-h-[48px] w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-rose-300 hover:border-rose-400 bg-rose-50/60 hover:bg-rose-100 text-rose-600 font-bold text-xs transition-all active:scale-98 cursor-pointer"
                   >
-                    <LogOut className="w-5 h-5 text-rose-600 shrink-0" />
-                    <span>লগআউট (Sign Out)</span>
+                    <LogOut className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>লগআউট</span>
                   </button>
                 </div>
               )}
@@ -372,28 +437,33 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Profile Avatar Button (40x40, rounded-full, thin gradient ring) */}
             {!currentUser ? (
               <button
+                type="button"
                 onClick={() => openAuthModal('signin')}
-                className="h-9 px-3 rounded-xl bg-blue-600 text-white font-bold text-xs flex items-center gap-1 shrink-0"
+                className="h-9 px-3 rounded-xl bg-blue-600 text-white font-bold text-xs flex items-center gap-1 shrink-0 select-none touch-manipulation active:scale-95"
               >
                 <LogIn className="w-3.5 h-3.5" />
                 <span>লগইন</span>
               </button>
             ) : (
               <button
-                ref={avatarButtonRef}
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="w-10 h-10 rounded-full p-0.5 bg-gradient-to-tr from-blue-500 to-indigo-600 active:scale-95 transition-all shadow-xs cursor-pointer flex items-center justify-center shrink-0"
-                title={`${userDisplayName} - প্রোফাইল মেনু`}
-                aria-label="ইউজার প্রোফাইল মেনু"
+                ref={mobileAvatarRef}
+                type="button"
+                onClick={() => setIsDropdownOpen((prev) => !prev)}
+                className={`relative z-20 w-10 h-10 rounded-full p-0.5 bg-gradient-to-tr from-blue-500 to-indigo-600 transition-all shadow-xs cursor-pointer flex items-center justify-center shrink-0 select-none touch-manipulation hover:scale-105 active:scale-95 active:ring-2 active:ring-blue-400 active:ring-offset-2 ${
+                  isDropdownOpen ? 'ring-2 ring-blue-500 ring-offset-2 scale-105' : ''
+                }`}
+                title={`${userDisplayName} - অ্যাকাউন্ট মেনু`}
+                aria-label="অ্যাকাউন্ট মেনু"
+                aria-expanded={isDropdownOpen}
               >
-                {currentUser.photoURL ? (
+                {photoURL ? (
                   <img
-                    src={currentUser.photoURL}
+                    src={photoURL}
                     alt={userDisplayName}
-                    className="w-full h-full rounded-full object-cover border border-white"
+                    className="w-full h-full rounded-full object-cover border border-white pointer-events-none select-none"
                   />
                 ) : (
-                  <div className="w-full h-full rounded-full bg-blue-600 text-white font-black text-sm flex items-center justify-center border border-white">
+                  <div className="w-full h-full rounded-full bg-blue-600 text-white font-black text-sm flex items-center justify-center border border-white pointer-events-none select-none">
                     {userInitials}
                   </div>
                 )}
@@ -452,7 +522,7 @@ export const Navbar: React.FC<NavbarProps> = ({
          ======================================================== */}
       {isDropdownOpen && currentUser && (
         <div className="md:hidden fixed inset-0 z-50">
-          {/* Dimmed Backdrop */}
+          {/* Dimmed Backdrop - outside click closes */}
           <div 
             onClick={() => setIsDropdownOpen(false)}
             className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
@@ -460,59 +530,104 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Bottom Sheet Modal */}
           <div
-            ref={dropdownRef}
+            ref={mobileDropdownRef}
             className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl border-t border-slate-100 p-5 z-50 animate-in slide-in-from-bottom duration-200 max-h-[85vh] overflow-y-auto"
           >
             {/* Drag Pill Handle */}
             <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4" />
 
-            {/* Sheet Header with Close Button */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                {currentUser.photoURL ? (
-                  <img
-                    src={currentUser.photoURL}
-                    alt={userDisplayName}
-                    className="w-12 h-12 rounded-full object-cover border-2 border-blue-200 shrink-0"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black text-lg flex items-center justify-center shrink-0">
-                    {userInitials}
-                  </div>
-                )}
-                <div className="min-w-0">
-                  <h3 className="text-base font-bold text-slate-900 truncate">
-                    {userDisplayName}
-                  </h3>
-                  <p className="text-xs text-slate-500 truncate">
-                    {currentUser.email}
-                  </p>
-                  <div className="text-[11px] text-blue-600 font-semibold flex items-center gap-1 mt-0.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> ক্লাউড সিঙ্কড
+            {/* 1. Top Section: user photo (or first letter), full name, email, and small hint if not completed */}
+            <div className="pb-3 border-b border-slate-100 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 min-w-0">
+                  {photoURL ? (
+                    <img
+                      src={photoURL}
+                      alt={userDisplayName}
+                      className="w-12 h-12 rounded-full object-cover border-2 border-blue-200 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black text-lg flex items-center justify-center shrink-0 shadow-xs">
+                      {userInitials}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <h3 className="text-base font-bold text-slate-900 truncate">
+                      {userDisplayName}
+                    </h3>
+                    <p className="text-xs text-slate-500 truncate">
+                      {currentUser.email}
+                    </p>
                   </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsDropdownOpen(false)}
+                  className="p-2 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                  aria-label="বন্ধ করুন"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <button
-                onClick={() => setIsDropdownOpen(false)}
-                className="p-2 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-                aria-label="বন্ধ করুন"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              {/* Small "প্রোফাইল সম্পূর্ণ করুন" hint if profileCompleted is not true */}
+              {!isProfileCompleted ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onNavigate('profile');
+                    setIsDropdownOpen(false);
+                  }}
+                  className="w-full py-2 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200/80 text-amber-900 text-xs font-bold flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>প্রোফাইল সম্পূর্ণ করুন</span>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-amber-500" />
+                </button>
+              ) : (
+                <div className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> ক্লাউড সিঙ্কড
+                </div>
+              )}
             </div>
 
-            {/* Sheet Actions List (each item >= 48px tall) */}
+            {/* Menu Items (2 through 5) - each >= 48px tall */}
             <div className="py-2 space-y-1">
+              {/* 2. আমার প্রোফাইল */}
               <button
+                type="button"
+                onClick={() => {
+                  onNavigate('profile');
+                  setIsDropdownOpen(false);
+                }}
+                className="min-h-[48px] w-full flex items-center justify-between px-3.5 rounded-2xl hover:bg-blue-50/70 active:bg-blue-100/70 text-slate-800 font-bold text-sm transition-colors text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-3.5">
+                  <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                    <User className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-slate-900">আমার প্রোফাইল</div>
+                    <div className="text-xs text-slate-500">শিক্ষার্থীর তথ্য, শিক্ষাপ্রতিষ্ঠান ও শ্রেণি</div>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </button>
+
+              {/* 3. সাহায্য */}
+              <button
+                type="button"
                 onClick={() => {
                   onNavigate('guide');
                   setIsDropdownOpen(false);
                 }}
-                className="min-h-[48px] w-full flex items-center justify-between px-3.5 rounded-2xl hover:bg-slate-50 active:bg-slate-100 text-slate-800 font-semibold text-sm transition-colors text-left"
+                className="min-h-[48px] w-full flex items-center justify-between px-3.5 rounded-2xl hover:bg-slate-50 active:bg-slate-100 text-slate-800 font-semibold text-sm transition-colors text-left cursor-pointer"
               >
                 <div className="flex items-center gap-3.5">
-                  <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
                     <HelpCircle className="w-5 h-5" />
                   </div>
                   <div>
@@ -523,15 +638,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <ChevronRight className="w-4 h-4 text-slate-400" />
               </button>
 
+              {/* 4. থিম পরিবর্তন */}
               <button
+                type="button"
                 onClick={() => {
                   onOpenSettings();
                   setIsDropdownOpen(false);
                 }}
-                className="min-h-[48px] w-full flex items-center justify-between px-3.5 rounded-2xl hover:bg-slate-50 active:bg-slate-100 text-slate-800 font-semibold text-sm transition-colors text-left"
+                className="min-h-[48px] w-full flex items-center justify-between px-3.5 rounded-2xl hover:bg-slate-50 active:bg-slate-100 text-slate-800 font-semibold text-sm transition-colors text-left cursor-pointer"
               >
                 <div className="flex items-center gap-3.5">
-                  <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                     <Palette className="w-5 h-5" />
                   </div>
                   <div>
@@ -542,15 +659,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <ChevronRight className="w-4 h-4 text-slate-400" />
               </button>
 
+              {/* 5. প্রগ্রেস রিসেট */}
               <button
+                type="button"
                 onClick={() => {
                   onResetProgress?.();
                   setIsDropdownOpen(false);
                 }}
-                className="min-h-[48px] w-full flex items-center justify-between px-3.5 rounded-2xl hover:bg-amber-50 active:bg-amber-100/70 text-amber-900 font-semibold text-sm transition-colors text-left"
+                className="min-h-[48px] w-full flex items-center justify-between px-3.5 rounded-2xl hover:bg-amber-50 active:bg-amber-100/70 text-amber-900 font-semibold text-sm transition-colors text-left cursor-pointer"
               >
                 <div className="flex items-center gap-3.5">
-                  <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
                     <RefreshCw className="w-5 h-5" />
                   </div>
                   <div>
@@ -562,20 +681,23 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </div>
 
+            {/* 6. Divider, then red-outlined "লগআউট" button with confirmation dialog */}
             <div className="my-2 border-t border-slate-100" />
 
-            {/* Logout Action */}
             <button
+              type="button"
               onClick={() => {
-                signOut();
                 setIsDropdownOpen(false);
+                if (onRequestLogout) {
+                  onRequestLogout();
+                } else {
+                  signOut();
+                }
               }}
-              className="min-h-[48px] w-full flex items-center gap-3.5 px-3.5 rounded-2xl bg-rose-50/70 hover:bg-rose-100/80 text-rose-600 font-bold text-sm transition-colors text-left"
+              className="min-h-[48px] w-full flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl border border-rose-300 hover:border-rose-400 bg-rose-50/70 hover:bg-rose-100 text-rose-600 font-bold text-sm transition-all active:scale-98 cursor-pointer"
             >
-              <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-                <LogOut className="w-5 h-5" />
-              </div>
-              <span>লগআউট (Sign Out)</span>
+              <LogOut className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>লগআউট</span>
             </button>
           </div>
         </div>

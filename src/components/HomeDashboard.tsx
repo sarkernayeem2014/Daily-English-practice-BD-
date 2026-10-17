@@ -32,7 +32,9 @@ import {
   Award,
   Crown,
   Medal,
-  ChevronRight
+  ChevronRight,
+  User,
+  X
 } from 'lucide-react';
 
 interface HomeDashboardProps {
@@ -44,6 +46,8 @@ interface HomeDashboardProps {
   onOpenBrowse: () => void;
   onOpenCertificate: () => void;
   onOpenGuide: () => void;
+  isProfileCompleted?: boolean;
+  onOpenProfile?: () => void;
 }
 
 const ICON_MAP: Record<string, React.ReactNode> = {
@@ -68,8 +72,11 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onOpenBrowse,
   onOpenCertificate,
   onOpenGuide,
+  isProfileCompleted,
+  onOpenProfile,
 }) => {
   const [activeTab, setActiveTab] = useState<'levels' | 'categories' | 'badges'>('levels');
+  const [showProfileReminder, setShowProfileReminder] = useState(true);
 
   const totalSentences = ALL_SENTENCES.length;
   const attemptedCount = Object.keys(progress.attemptedIds).length;
@@ -92,7 +99,42 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const isDailyDone = !!progress.completedDailyDates[today];
 
   return (
-    <div className="space-y-8 pb-16">
+    <div className="space-y-6 sm:space-y-8 pb-16">
+      {/* Dismissible Profile Reminder Card */}
+      {!isProfileCompleted && showProfileReminder && (
+        <div className="rounded-2xl bg-gradient-to-r from-blue-50 via-indigo-50 to-amber-50 border border-blue-200/80 p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+              <User className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-slate-900">
+                আপনার প্রোফাইল এখনো সম্পূর্ণ করা হয়নি
+              </h4>
+              <p className="text-xs text-slate-600 mt-0.5">
+                স্কুল/কলেজ ও শ্রেণি যুক্ত করে আপনার লার্নিং প্রোফাইলটি সম্পূর্ণ করুন।
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+            <button
+              onClick={onOpenProfile}
+              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-all active:scale-98 cursor-pointer whitespace-nowrap"
+            >
+              প্রোফাইল সম্পূর্ণ করুন
+            </button>
+            <button
+              onClick={() => setShowProfileReminder(false)}
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 transition-colors cursor-pointer"
+              title="রিমাইন্ডার বন্ধ করুন"
+              aria-label="রিমাইন্ডার বন্ধ করুন"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Gamified Hero Banner with XP Progress & Streak */}
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-900 text-white p-6 sm:p-10 shadow-xl shadow-blue-900/10">
         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />

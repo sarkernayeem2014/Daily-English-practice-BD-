@@ -10,6 +10,9 @@ import { ReviewView } from './components/ReviewView';
 import { CategoryBrowser } from './components/CategoryBrowser';
 import { CertificateView } from './components/CertificateView';
 import { GuideView } from './components/GuideView';
+import { ProfileView } from './components/ProfileView';
+import { ProfileCompletionModal } from './components/ProfileCompletionModal';
+import { LogoutConfirmDialog } from './components/LogoutConfirmDialog';
 import { ThemeSettingsModal } from './components/ThemeSettingsModal';
 import { AuthModal } from './components/AuthModal';
 import { AuthPage } from './components/AuthPage';
@@ -19,6 +22,7 @@ import {
   saveUserProgressToFirestore,
   mergeLocalAndCloudProgress,
 } from './firebase/progressService';
+import { getUserProfile, UserProfileData } from './firebase/authService';
 import { BookOpen, Sparkles, Trophy } from 'lucide-react';
 
 export default function App() {
@@ -26,7 +30,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<ViewMode>(() => {
     try {
       const saved = localStorage.getItem('daily_english_practice_current_view');
-      if (saved && ['dashboard', 'practice', 'daily', 'review', 'browse', 'certificate', 'guide'].includes(saved)) {
+      if (saved && ['dashboard', 'practice', 'daily', 'review', 'browse', 'certificate', 'guide', 'profile'].includes(saved)) {
         return saved as ViewMode;
       }
     } catch {}
@@ -39,12 +43,51 @@ export default function App() {
   const [isProgressLoading, setIsProgressLoading] = useState<boolean>(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  // User Profile Data & First-time completion modal state
+  const [userProfile, setUserProfile] = useState<UserProfileData | null>(null);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
+
   // Sync currentView to localStorage for seamless refresh
   useEffect(() => {
     try {
       localStorage.setItem('daily_english_practice_current_view', currentView);
     } catch {}
   }, [currentView]);
+
+  // Fetch user profile from Firestore /users/{uid} and check completion
+  useEffect(() => {
+    if (!currentUser) {
+      setUserProfile(null);
+      setIsProfileModalOpen(false);
+      return;
+    }
+
+    let isMounted = true;
+    getUserProfile(currentUser.uid).then((profile) => {
+      if (!isMounted) return;
+      if (profile) {
+        setUserProfile(profile);
+        if (!profile.profileCompleted) {
+          const skipped = sessionStorage.getItem(`dep_profile_skipped_${currentUser.uid}`);
+          if (!skipped) {
+            setIsProfileModalOpen(true);
+          }
+        }
+      } else {
+        const skipped = sessionStorage.getItem(`dep_profile_skipped_${currentUser.uid}`);
+        if (!skipped) {
+          setIsProfileModalOpen(true);
+        }
+      }
+    }).catch((err) => {
+      console.error('Failed to load user profile in App:', err);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser?.uid]);
 
   // Sync progress immediately to localStorage on any state change
   useEffect(() => {
@@ -216,6 +259,8 @@ export default function App() {
         totalSentences={ALL_SENTENCES.length}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onResetProgress={handleResetProgress}
+        onRequestLogout={() => setIsLogoutConfirmOpen(true)}
+        userProfile={userProfile}
       />
 
       {/* Main Content Area */}
@@ -245,6 +290,23 @@ export default function App() {
               setCurrentView('guide');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
+            isProfileCompleted={!!userProfile?.profileCompleted}
+            onOpenProfile={() => {
+              setCurrentView('profile');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
+        )}
+
+        {currentView === 'profile' && (
+          <ProfileView
+            progress={progress}
+            onBackToDashboard={() => {
+              setCurrentView('dashboard');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onRequestLogout={() => setIsLogoutConfirmOpen(true)}
+            onProfileUpdated={(updated) => setUserProfile(updated)}
           />
         )}
 
@@ -314,6 +376,30 @@ export default function App() {
 
       {/* Authentication Modal */}
       <AuthModal />
+
+      {/* First-Time Profile Completion Modal */}
+      <ProfileCompletionModal
+        isOpen={isProfileModalOpen}
+        onClose={() => {
+          if (currentUser) {
+            sessionStorage.setItem(`dep_profile_skipped_${currentUser.uid}`, 'true');
+          }
+          setIsProfileModalOpen(false);
+        }}
+        onSuccess={async () => {
+          if (currentUser) {
+            const updated = await getUserProfile(currentUser.uid);
+            if (updated) setUserProfile(updated);
+          }
+          setIsProfileModalOpen(false);
+        }}
+      />
+
+      {/* Logout Confirmation Dialog (Mobile bottom sheet & Desktop modal) */}
+      <LogoutConfirmDialog
+        isOpen={isLogoutConfirmOpen}
+        onClose={() => setIsLogoutConfirmOpen(false)}
+      />
 
 
       {/* Footer */}
