@@ -47,11 +47,11 @@ export const BadgesShelf: React.FC<BadgesShelfProps> = ({ progress, onClose }) =
             <span>অর্জিত সম্মাননা ব্যাজসমূহ (Badges Showcase)</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            মোট ১০টি ব্যাজের মধ্যে {earnedCount}টি আনলক হয়েছে
+            মোট {BADGES.length}টি ব্যাজের মধ্যে {earnedCount}টি আনলক হয়েছে
           </p>
         </div>
         <span className="text-xs font-bold px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
-          {earnedCount}/১০ আনলক
+          {earnedCount}/{BADGES.length} আনলক
         </span>
       </div>
 

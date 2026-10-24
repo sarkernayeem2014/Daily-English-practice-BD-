@@ -43,6 +43,7 @@ export async function loadUserProgressFromFirestore(uid: string): Promise<UserPr
       totalScore: Object.keys(correctIds).length * 10,
       lastLevel: (data.lastLevel as any) || 1,
       lastSentenceId: typeof data.lastSentenceId === 'string' ? data.lastSentenceId : undefined,
+      nickname: typeof data.nickname === 'string' ? data.nickname : undefined,
     };
 
     return progress;
@@ -163,5 +164,6 @@ export function mergeLocalAndCloudProgress(
     reducedMotion: typeof cloud.reducedMotion === 'boolean' ? cloud.reducedMotion : local.reducedMotion,
     lastLevel: cloud.lastLevel || local.lastLevel || 1,
     lastSentenceId: cloud.lastSentenceId || local.lastSentenceId || undefined,
+    nickname: cloud.nickname || local.nickname || undefined,
   };
 }

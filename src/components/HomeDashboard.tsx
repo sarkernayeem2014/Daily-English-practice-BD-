@@ -45,6 +45,7 @@ interface HomeDashboardProps {
   onOpenReview: () => void;
   onOpenBrowse: () => void;
   onOpenCertificate: () => void;
+  onOpenLeaderboard?: () => void;
   onOpenGuide: () => void;
   isProfileCompleted?: boolean;
   onOpenProfile?: () => void;
@@ -71,6 +72,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onOpenReview,
   onOpenBrowse,
   onOpenCertificate,
+  onOpenLeaderboard,
   onOpenGuide,
   isProfileCompleted,
   onOpenProfile,
@@ -152,7 +154,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             </h1>
 
             <p className="text-blue-100 text-sm sm:text-base leading-relaxed font-normal">
-              ৪টি প্রগ্রেসিভ লেভেল, ৫০০টি বাস্তব বাক্য এবং দৈনিক চ্যালেঞ্জ সমাধানের মাধ্যমে XP অর্জন করুন, ব্যাজ আনলক করুন ও অর্জন করুন কোর্স প্রশংসাপত্র।
+              ৬টি প্রগ্রেসিভ লেভেল, বাস্তব বাক্য এবং দৈনিক চ্যালেঞ্জ সমাধানের মাধ্যমে XP অর্জন করুন, ব্যাজ আনলক করুন ও অর্জন করুন কোর্স প্রশংসাপত্র।
             </p>
 
             <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -273,34 +275,45 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               }`}
             >
               <Award className="w-4 h-4 text-amber-500 shrink-0" />
-              <span>সম্মাননা ব্যাজ ({Object.keys(progress.earnedBadges || {}).length}/১০)</span>
+              <span>সম্মাননা ব্যাজ ({Object.keys(progress.earnedBadges || {}).length}/{BADGES.length})</span>
             </button>
           </div>
         </div>
 
-        <button
-          onClick={onOpenCertificate}
-          className="hidden md:inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 transition-colors shrink-0"
-        >
-          <Trophy className="w-4 h-4 text-amber-600" />
-          <span>সার্টিফিকেট দেখুন</span>
-        </button>
+        <div className="hidden md:flex items-center gap-2 shrink-0">
+          {onOpenLeaderboard && (
+            <button
+              onClick={onOpenLeaderboard}
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 transition-colors cursor-pointer"
+            >
+              <Trophy className="w-4 h-4 text-blue-600" />
+              <span>লিডারবোর্ড</span>
+            </button>
+          )}
+          <button
+            onClick={onOpenCertificate}
+            className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 transition-colors cursor-pointer"
+          >
+            <Award className="w-4 h-4 text-amber-600" />
+            <span>সার্টিফিকেট দেখুন</span>
+          </button>
+        </div>
       </div>
 
-      {/* TAB 1: 4 Progressive Learning Levels */}
+      {/* TAB 1: Progressive Learning Levels */}
       {activeTab === 'levels' && (
         <section className="space-y-6 animate-in fade-in duration-200">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
-                ক্রমান্বয়ে আনলক হওয়া ৪টি লার্নিং লেভেল
+                ক্রমান্বয়ে আনলক হওয়া ৫টি লার্নিং লেভেল
               </h2>
               <p className="text-xs sm:text-sm text-slate-500">
                 প্রতিটি লেভেলের লক্ষ্য পূরণ করে পরবর্তী চ্যালেঞ্জ ও নতুন ব্যাজ আনলক করুন
               </p>
             </div>
             <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
-              মোট ৫০০ বাক্য
+              মোট {totalSentences} বাক্য
             </span>
           </div>
 
@@ -309,7 +322,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               const tierSentences = getSentencesForTier(tierInfo.tier);
               const tierCompleted = tierSentences.filter((s) => progress.correctIds[s.id]).length;
               const isUnlocked = isTierUnlocked(tierInfo.tier, progress.unlockedTiers);
-              const percent = Math.round((tierCompleted / tierInfo.targetCount) * 100);
+              const percent = Math.min(100, Math.round((tierCompleted / tierInfo.targetCount) * 100));
               const isFinished = tierCompleted >= tierInfo.targetCount;
 
               return (
@@ -417,7 +430,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               </p>
             </div>
             <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-              ৫১০টি মূল বাক্য
+              মোট {totalSentences} বাক্য
             </span>
           </div>
 

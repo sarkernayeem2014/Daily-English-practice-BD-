@@ -46,6 +46,15 @@ service cloud.firestore {
         allow delete: if false;
       }
     }
+
+    // 3. Public Leaderboard: /leaderboard/{userId}
+    match /leaderboard/{userId} {
+      // Any signed-in user can read the leaderboard
+      allow read: if isSignedIn();
+      // Only the authenticated user can create or update their own document
+      allow create, update: if isSignedIn() && request.auth.uid == userId;
+      // Deletions are forbidden
+      allow delete: if false;
+    }
   }
 }
-

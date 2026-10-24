@@ -45,6 +45,19 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["userId", "xp"]
+    },
+    "LeaderboardEntry": {
+      "title": "LeaderboardEntry",
+      "description": "Public leaderboard rankings showing top scores and learner names",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string", "maxLength": 100 },
+        "totalPoints": { "type": "number" },
+        "levelCompleted": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "totalPoints", "levelCompleted"]
     }
   },
   "firestore": {
@@ -55,6 +68,10 @@
     "/users/{userId}/progress/current": {
       "schema": "UserProgress",
       "description": "Stores the user's gamified learning progress and XP"
+    },
+    "/leaderboard/{userId}": {
+      "schema": "LeaderboardEntry",
+      "description": "Public leaderboard rankings showing top scores and learner names"
     }
   }
 }

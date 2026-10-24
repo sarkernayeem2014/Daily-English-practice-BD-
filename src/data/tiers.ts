@@ -70,7 +70,7 @@ export const LEVEL_TIERS: LevelTierInfo[] = [
  * Tier 2: 100 sentences (indices 50 to 149)
  * Tier 3: 150 sentences (indices 150 to 299)
  * Tier 4: 200 sentences (indices 300 to 499)
- * Tier 5 (Master Level): All 510 sentences (complete master pool)
+ * Tier 5 (Master Level): 510 sentences (complete master pool)
  */
 export function getSentencesForTier(tier: TierLevel): SentenceItem[] {
   if (tier === 1) {
@@ -86,7 +86,7 @@ export function getSentencesForTier(tier: TierLevel): SentenceItem[] {
     return ALL_SENTENCES.slice(300, 500).map((s) => ({ ...s, tier: 4 }));
   }
   if (tier === 5) {
-    return ALL_SENTENCES.map((s) => ({ ...s, tier: 5 }));
+    return ALL_SENTENCES.slice(0, 510).map((s) => ({ ...s, tier: 5 }));
   }
   return ALL_SENTENCES.slice(0, 50);
 }
@@ -106,7 +106,7 @@ export function isTierUnlocked(tier: TierLevel, unlockedTiers: number[]): boolea
  * - Level 1: 50 total sentences; unlock Level 2 after 30 unique completed sentences.
  * - Level 2: 100 total sentences; unlock Level 3 after 80 unique completed sentences.
  * - Level 3: 150 total sentences; unlock Level 4 after 120 unique completed sentences.
- * - Level 4: 200 total sentences; unlock the next Master Level after 180 unique completed sentences.
+ * - Level 4: 200 total sentences; unlock Master Level 5 after 180 unique completed sentences.
  */
 export function computeUnlockedTiers(
   correctIds: Record<string, boolean>,
@@ -143,10 +143,36 @@ export function computeUnlockedTiers(
     unlocked.add(4);
   }
 
-  // Level 4: 200 total sentences; unlock the next Master Level after 180 unique completed sentences
+  // Level 4: 200 total sentences; unlock Level 5 after 180 unique completed sentences
   if (tier4Count >= 180 || (unlocked.has(4) && totalCount >= 410)) {
     unlocked.add(5);
   }
 
   return Array.from(unlocked).sort((a, b) => a - b);
+}
+
+/**
+ * Calculates how many levels (1-5) the user has fully completed.
+ */
+export function computeCompletedLevelsCount(
+  correctIds: Record<string, boolean>,
+  earnedBadges?: Record<string, any>
+): number {
+  let count = 0;
+  if (earnedBadges?.['level-1-complete'] || ALL_SENTENCES.slice(0, 50).every((s) => correctIds[s.id])) {
+    count++;
+  }
+  if (earnedBadges?.['level-2-complete'] || ALL_SENTENCES.slice(50, 150).every((s) => correctIds[s.id])) {
+    count++;
+  }
+  if (earnedBadges?.['level-3-complete'] || ALL_SENTENCES.slice(150, 300).every((s) => correctIds[s.id])) {
+    count++;
+  }
+  if (earnedBadges?.['level-4-complete'] || ALL_SENTENCES.slice(300, 500).every((s) => correctIds[s.id])) {
+    count++;
+  }
+  if (ALL_SENTENCES.slice(0, 510).every((s) => correctIds[s.id])) {
+    count++;
+  }
+  return count;
 }

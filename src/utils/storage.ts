@@ -31,6 +31,7 @@ export const DEFAULT_PROGRESS: UserProgress = {
   reducedMotion: false,
   lastLevel: 1,
   lastSentenceId: undefined,
+  nickname: '',
 };
 
 export function loadProgress(): UserProgress {
@@ -166,6 +167,7 @@ export function loadProgress(): UserProgress {
       totalScore: completedCount * 10,
       lastLevel: parsed.lastLevel || 1,
       lastSentenceId: parsed.lastSentenceId || undefined,
+      nickname: parsed.nickname || localStorage.getItem('dep_user_nickname') || '',
     };
 
     return progress;
@@ -187,6 +189,9 @@ export function saveProgress(progress: UserProgress): void {
       DEDICATED_COMPLETED_KEY,
       JSON.stringify(Object.keys(progress.correctIds || {}))
     );
+    if (progress.nickname) {
+      localStorage.setItem('dep_user_nickname', progress.nickname);
+    }
   } catch (e) {
     console.error('Failed to save progress to localStorage', e);
   }

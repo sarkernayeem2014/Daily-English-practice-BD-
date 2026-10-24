@@ -121,7 +121,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       badge: null,
     },
     {
-      id: 'certificate' as ViewMode,
+      id: 'leaderboard' as ViewMode,
       label: 'লিডারবোর্ড',
       icon: Trophy,
       badge: null,

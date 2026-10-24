@@ -9,6 +9,7 @@ import { DailyChallengeView } from './components/DailyChallengeView';
 import { ReviewView } from './components/ReviewView';
 import { CategoryBrowser } from './components/CategoryBrowser';
 import { CertificateView } from './components/CertificateView';
+import { LeaderboardView } from './components/LeaderboardView';
 import { GuideView } from './components/GuideView';
 import { ProfileView } from './components/ProfileView';
 import { ProfileCompletionModal } from './components/ProfileCompletionModal';
@@ -23,6 +24,8 @@ import {
   mergeLocalAndCloudProgress,
 } from './firebase/progressService';
 import { getUserProfile, UserProfileData } from './firebase/authService';
+import { syncUserToLeaderboard } from './services/leaderboardService';
+import { computeCompletedLevelsCount } from './data/tiers';
 import { BookOpen, Sparkles, Trophy } from 'lucide-react';
 
 export default function App() {
@@ -30,7 +33,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<ViewMode>(() => {
     try {
       const saved = localStorage.getItem('daily_english_practice_current_view');
-      if (saved && ['dashboard', 'practice', 'daily', 'review', 'browse', 'certificate', 'guide', 'profile'].includes(saved)) {
+      if (saved && ['dashboard', 'practice', 'daily', 'review', 'browse', 'certificate', 'leaderboard', 'guide', 'profile'].includes(saved)) {
         return saved as ViewMode;
       }
     } catch {}
@@ -117,6 +120,9 @@ export default function App() {
           setPracticeTier(merged.lastLevel);
         }
         await saveUserProgressToFirestore(currentUser.uid, merged);
+        const name = merged.nickname || userProfile?.displayName || userProfile?.fullName || currentUser.displayName || 'শিক্ষার্থী';
+        const levelCompleted = computeCompletedLevelsCount(merged.correctIds, merged.earnedBadges);
+        syncUserToLeaderboard(currentUser.uid, name, merged.xp, levelCompleted).catch(() => {});
       } catch (err) {
         console.error('Failed to sync progress with Firestore:', err);
       } finally {
@@ -165,6 +171,16 @@ export default function App() {
       if (currentUser?.uid) {
         saveUserProgressToFirestore(currentUser.uid, next).catch((err) => {
           console.error('Failed to sync updated progress to Firestore:', err);
+        });
+        const name = currentUser.displayName || userProfile?.displayName || userProfile?.fullName || next.nickname || 'শিক্ষার্থী';
+        const levelCompleted = computeCompletedLevelsCount(next.correctIds, next.earnedBadges);
+        syncUserToLeaderboard(
+          currentUser.uid,
+          name,
+          next.xp,
+          levelCompleted
+        ).catch((err) => {
+          console.warn('Leaderboard sync note:', err);
         });
       }
       return next;
@@ -286,6 +302,10 @@ export default function App() {
               setCurrentView('certificate');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
+            onOpenLeaderboard={() => {
+              setCurrentView('leaderboard');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
             onOpenGuide={() => {
               setCurrentView('guide');
               window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -353,6 +373,24 @@ export default function App() {
             progress={progress}
             onUpdateProgress={updateProgress}
             onBackToDashboard={() => setCurrentView('dashboard')}
+          />
+        )}
+
+        {currentView === 'leaderboard' && (
+          <LeaderboardView
+            progress={progress}
+            onUpdateProgress={updateProgress}
+            onBackToDashboard={() => {
+              setCurrentView('dashboard');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onStartPractice={() => {
+              setPracticeTier(progress.lastLevel || 1);
+              setPracticeCategory('all');
+              setPracticeLevel('all');
+              setCurrentView('practice');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           />
         )}
 

@@ -98,6 +98,7 @@ export interface UserProgress {
   reducedMotion: boolean;
   lastLevel?: TierLevel;
   lastSentenceId?: string;
+  nickname?: string;
 }
 
 export type ViewMode =
@@ -107,8 +108,19 @@ export type ViewMode =
   | 'browse'
   | 'daily'
   | 'certificate'
+  | 'leaderboard'
   | 'guide'
   | 'profile';
+
+export interface LeaderboardEntry {
+  uid: string;
+  name: string;
+  totalPoints: number;
+  levelCompleted: number;
+  updatedAt: string;
+  rank?: number;
+  isCurrentUser?: boolean;
+}
 
 export const CLASS_LEVEL_OPTIONS = [
   '৬ষ্ঠ',
