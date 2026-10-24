@@ -19,6 +19,7 @@ export interface UserProfileData {
   uid: string;
   email: string;
   displayName: string;
+  name?: string;
   photoURL?: string;
   createdAt: string;
   updatedAt: string;

@@ -8,6 +8,8 @@
         "uid": { "type": "string" },
         "email": { "type": "string" },
         "displayName": { "type": "string" },
+        "name": { "type": "string" },
+        "fullName": { "type": "string" },
         "photoURL": { "type": "string" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }

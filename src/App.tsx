@@ -10,7 +10,6 @@ import { ReviewView } from './components/ReviewView';
 import { CategoryBrowser } from './components/CategoryBrowser';
 import { CertificateView } from './components/CertificateView';
 import { LeaderboardView } from './components/LeaderboardView';
-import { GuideView } from './components/GuideView';
 import { ProfileView } from './components/ProfileView';
 import { ProfileCompletionModal } from './components/ProfileCompletionModal';
 import { LogoutConfirmDialog } from './components/LogoutConfirmDialog';
@@ -33,7 +32,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<ViewMode>(() => {
     try {
       const saved = localStorage.getItem('daily_english_practice_current_view');
-      if (saved && ['dashboard', 'practice', 'daily', 'review', 'browse', 'certificate', 'leaderboard', 'guide', 'profile'].includes(saved)) {
+      if (saved && ['dashboard', 'practice', 'daily', 'review', 'browse', 'certificate', 'leaderboard', 'profile'].includes(saved)) {
         return saved as ViewMode;
       }
     } catch {}
@@ -227,7 +226,7 @@ export default function App() {
   };
 
   const handleResetProgress = () => {
-    if (window.confirm('আপনি কি সত্যিই আপনার অগ্রগতি ও সমস্ত XP রিসেট করতে চান? এই কাজটির পর পূর্বের ডাটা ফেরত পাওয়া যাবে না।')) {
+    if (window.confirm('আপনার সব XP ও অগ্রগতি মুছে যাবে, নিশ্চিত?')) {
       const fresh = { ...DEFAULT_PROGRESS };
       setProgress(fresh);
       saveProgress(fresh);
@@ -235,6 +234,8 @@ export default function App() {
         saveUserProgressToFirestore(currentUser.uid, fresh).catch((err) => {
           console.error('Failed to reset cloud progress:', err);
         });
+        const name = currentUser.displayName || userProfile?.displayName || userProfile?.fullName || 'শিক্ষার্থী';
+        syncUserToLeaderboard(currentUser.uid, name, 0, 0).catch(() => {});
       }
     }
   };
@@ -306,27 +307,11 @@ export default function App() {
               setCurrentView('leaderboard');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-            onOpenGuide={() => {
-              setCurrentView('guide');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
             isProfileCompleted={!!userProfile?.profileCompleted}
             onOpenProfile={() => {
               setCurrentView('profile');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-          />
-        )}
-
-        {currentView === 'profile' && (
-          <ProfileView
-            progress={progress}
-            onBackToDashboard={() => {
-              setCurrentView('dashboard');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            onRequestLogout={() => setIsLogoutConfirmOpen(true)}
-            onProfileUpdated={(updated) => setUserProfile(updated)}
           />
         )}
 
@@ -394,11 +379,18 @@ export default function App() {
           />
         )}
 
-        {currentView === 'guide' && (
-          <GuideView
+
+        {currentView === 'profile' && (
+          <ProfileView
             progress={progress}
             onUpdateProgress={updateProgress}
-            onBackToDashboard={() => setCurrentView('dashboard')}
+            onBackToDashboard={() => {
+              setCurrentView('dashboard');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onResetProgress={handleResetProgress}
+            onRequestLogout={() => setIsLogoutConfirmOpen(true)}
+            onProfileUpdated={(updated) => setUserProfile(updated)}
           />
         )}
       </main>
@@ -485,16 +477,6 @@ export default function App() {
               className="hover:text-blue-600 transition-colors"
             >
               প্রশংসাপত্র
-            </button>
-            <span>•</span>
-            <button
-              onClick={() => {
-                setCurrentView('guide');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="hover:text-blue-600 transition-colors"
-            >
-              সেটআপ ও গিটহাব গাইড
             </button>
           </div>
         </div>

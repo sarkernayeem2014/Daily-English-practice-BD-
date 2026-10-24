@@ -46,7 +46,6 @@ interface HomeDashboardProps {
   onOpenBrowse: () => void;
   onOpenCertificate: () => void;
   onOpenLeaderboard?: () => void;
-  onOpenGuide: () => void;
   isProfileCompleted?: boolean;
   onOpenProfile?: () => void;
 }
@@ -73,7 +72,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onOpenBrowse,
   onOpenCertificate,
   onOpenLeaderboard,
-  onOpenGuide,
   isProfileCompleted,
   onOpenProfile,
 }) => {

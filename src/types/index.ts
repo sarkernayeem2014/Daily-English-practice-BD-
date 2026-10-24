@@ -109,7 +109,6 @@ export type ViewMode =
   | 'daily'
   | 'certificate'
   | 'leaderboard'
-  | 'guide'
   | 'profile';
 
 export interface LeaderboardEntry {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { UserProgress, CLASS_LEVEL_OPTIONS, ClassLevel } from '../types';
+import { UserProgress } from '../types';
 import {
   getUserProfile,
   updateUserProfile,
@@ -8,11 +8,11 @@ import {
   convertBanglaDigitsToEnglish,
   validateBangladeshiPhone,
 } from '../firebase/authService';
+import { syncUserToLeaderboard, setSavedNickname } from '../services/leaderboardService';
+import { computeCompletedLevelsCount } from '../data/tiers';
 import {
   ArrowLeft,
   User,
-  GraduationCap,
-  School,
   Phone,
   Mail,
   Save,
@@ -21,28 +21,36 @@ import {
   Loader2,
   LogOut,
   Zap,
-  Crown,
   ShieldCheck,
+  Flame,
+  Trophy,
+  Lock,
+  Edit3,
+  AlertTriangle,
+  RotateCcw
 } from 'lucide-react';
 
 interface ProfileViewProps {
   progress: UserProgress;
+  onUpdateProgress?: (updater: (prev: UserProgress) => UserProgress) => void;
   onBackToDashboard: () => void;
+  onResetProgress?: () => void;
   onRequestLogout: () => void;
   onProfileUpdated?: (updated: UserProfileData) => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
   progress,
+  onUpdateProgress,
   onBackToDashboard,
+  onResetProgress,
   onRequestLogout,
   onProfileUpdated,
 }) => {
   const { currentUser } = useAuth();
 
-  const [fullName, setFullName] = useState('');
-  const [institution, setInstitution] = useState('');
-  const [classLevel, setClassLevel] = useState<ClassLevel | ''>('');
+  // 1. Form state
+  const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
 
   const [isLoading, setIsLoading] = useState(true);
@@ -50,26 +58,38 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showToast, setShowToast] = useState(false);
 
-  // Load profile from Firestore /users/{uid}
+  // 2. Learning statistics from Firestore progress
+  const completedSentencesCount = Object.keys(progress.correctIds || {}).length;
+  const levelCompleted = computeCompletedLevelsCount(progress.correctIds, progress.earnedBadges);
+
+  // Load user profile from Firestore /users/{uid}
   useEffect(() => {
     let isMounted = true;
     const fetchProfile = async () => {
-      if (!currentUser) return;
+      if (!currentUser) {
+        setIsLoading(false);
+        return;
+      }
       setIsLoading(true);
       try {
         const data = await getUserProfile(currentUser.uid);
         if (isMounted) {
           if (data) {
-            setFullName(data.fullName || data.displayName || currentUser.displayName || '');
-            setInstitution(data.institution || '');
-            setClassLevel((data.classLevel as ClassLevel) || '');
+            const initialName =
+              data.name ||
+              data.displayName ||
+              data.fullName ||
+              progress.nickname ||
+              currentUser.displayName ||
+              '';
+            setName(initialName);
             setPhone(data.phone || '');
           } else {
-            setFullName(currentUser.displayName || '');
+            setName(progress.nickname || currentUser.displayName || '');
           }
         }
       } catch (err) {
-        console.error('Failed to load profile:', err);
+        console.error('Failed to load profile from Firestore:', err);
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -83,16 +103,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     };
   }, [currentUser]);
 
-  // Determine user rank title from XP
-  const getRankTitle = (xp: number) => {
-    if (xp >= 3000) return 'লেভেল ৪ • ইংরেজি গ্র্যান্ডমাস্টার';
-    if (xp >= 1500) return 'লেভেল ৩ • সাবলীলতার চ্যাম্পিয়ন';
-    if (xp >= 500) return 'লেভেল ২ • দক্ষ বাক্য কারিগর';
-    return 'লেভেল ১ • অনুসন্ধানী শিক্ষার্থী';
+  // Provider label from Firebase Auth
+  const getProviderLabel = () => {
+    if (!currentUser) return 'গেস্ট অ্যাকাউন্ট';
+    const providerId = currentUser.providerData?.[0]?.providerId;
+    if (providerId === 'google.com') return 'গুগল (Google)';
+    if (providerId === 'password') return 'ইমেইল ও পাসওয়ার্ড';
+    if (providerId === 'github.com') return 'গিটহাব (GitHub)';
+    if (currentUser.isAnonymous) return 'বেনামী / গেস্ট';
+    return providerId || 'গুগল অ্যাকাউন্ট';
   };
 
   const handlePhoneChange = (val: string) => {
-    // Automatically convert any Bangla digits to English digits
     const converted = convertBanglaDigitsToEnglish(val);
     setPhone(converted);
     if (errors.phone) {
@@ -100,27 +122,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
   };
 
+  // Validation rules
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
+    const trimmedName = name.trim();
 
-    if (!fullName.trim()) {
-      newErrors.fullName = 'শিক্ষার্থীর নাম আবশ্যক';
-    } else if (fullName.trim().length < 2) {
-      newErrors.fullName = 'নাম কমপক্ষে ২ অক্ষরের হতে হবে';
+    // 1. Name: 2 to 30 characters
+    if (!trimmedName) {
+      newErrors.name = 'নাম বা ডাকনাম আবশ্যক (কমপক্ষে ২ অক্ষর)';
+    } else if (trimmedName.length < 2) {
+      newErrors.name = 'নাম বা ডাকনাম কমপক্ষে ২ অক্ষরের হতে হবে';
+    } else if (trimmedName.length > 30) {
+      newErrors.name = 'নাম বা ডাকনাম সর্বোচ্চ ৩০ অক্ষরের মধ্যে রাখুন';
     }
 
-    if (!institution.trim()) {
-      newErrors.institution = 'স্কুল, কলেজ বা বিশ্ববিদ্যালয়ের নাম আবশ্যক';
-    }
-
-    if (!classLevel) {
-      newErrors.classLevel = 'অনুগ্রহ করে আপনার শ্রেণি বা ক্লাস নির্বাচন করুন';
-    }
-
+    // 2. Phone: Optional. If present, must be Bangladeshi 11 digits starting with 01
     if (phone.trim()) {
       const normalized = convertBanglaDigitsToEnglish(phone).replace(/[\s\-+]/g, '');
       const cleanPhone = normalized.startsWith('88') ? normalized.slice(2) : normalized;
-      if (!validateBangladeshiPhone(cleanPhone)) {
+      if (!/^01[3-9]\d{8}$/.test(cleanPhone)) {
         newErrors.phone = 'সঠিক বাংলাদেশি ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)';
       }
     }
@@ -129,34 +149,56 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
+  // Save handler: updates users/{uid} and leaderboard/{uid}
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
     if (!validate()) return;
 
     setIsSaving(true);
+    const cleanName = name.trim();
+
     try {
-      const cleanPhone = phone.trim() ? convertBanglaDigitsToEnglish(phone).replace(/[\s\-+]/g, '') : '';
+      const cleanPhone = phone.trim()
+        ? convertBanglaDigitsToEnglish(phone).replace(/[\s\-+]/g, '')
+        : '';
       const finalPhone = cleanPhone.startsWith('88') ? cleanPhone.slice(2) : cleanPhone;
 
-      const updates: Partial<UserProfileData> = {
-        fullName: fullName.trim(),
-        displayName: fullName.trim(),
-        institution: institution.trim(),
-        classLevel: classLevel as string,
+      // 1. Update Firestore /users/{uid} (includes phone)
+      const userUpdates: Partial<UserProfileData> = {
+        name: cleanName,
+        displayName: cleanName,
+        fullName: cleanName,
         phone: finalPhone,
         profileCompleted: true,
       };
+      await updateUserProfile(currentUser.uid, userUpdates);
 
-      await updateUserProfile(currentUser.uid, updates);
+      // 2. Update Firestore /leaderboard/{uid} (NEVER includes phone)
+      await syncUserToLeaderboard(
+        currentUser.uid,
+        cleanName,
+        progress.xp,
+        levelCompleted
+      );
 
+      // 3. Update local progress state and nickname storage
+      setSavedNickname(cleanName);
+      if (onUpdateProgress) {
+        onUpdateProgress((prev) => ({
+          ...prev,
+          nickname: cleanName,
+          studentName: cleanName,
+        }));
+      }
+
+      // 4. Notify parent state
       const completeProfile: UserProfileData = {
         uid: currentUser.uid,
         email: currentUser.email || '',
-        displayName: fullName.trim(),
-        fullName: fullName.trim(),
-        institution: institution.trim(),
-        classLevel: classLevel as string,
+        name: cleanName,
+        displayName: cleanName,
+        fullName: cleanName,
         phone: finalPhone,
         profileCompleted: true,
         photoURL: currentUser.photoURL || '',
@@ -180,16 +222,26 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
   };
 
-  const userDisplayName = fullName.trim() || currentUser?.displayName || 'শিক্ষার্থী';
-  const userInitials = userDisplayName.charAt(0).toUpperCase() || 'E';
+  // Reset Progress Handler with specific confirmation dialog
+  const handleResetClick = () => {
+    if (window.confirm('আপনার সব XP ও অগ্রগতি মুছে যাবে, নিশ্চিত?')) {
+      if (onResetProgress) {
+        onResetProgress();
+      }
+    }
+  };
+
+  const userDisplayName =
+    currentUser?.displayName || name.trim() || progress.nickname || 'শিক্ষার্থী';
+  const userInitials = (userDisplayName.charAt(0) || 'U').toUpperCase();
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 pb-20 px-1 sm:px-0 animate-in fade-in duration-200">
+    <div className="max-w-2xl mx-auto space-y-6 pb-28 px-3 sm:px-0 animate-in fade-in duration-200">
       {/* Toast Notification */}
       {showToast && (
         <div className="fixed top-20 right-4 sm:right-8 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-emerald-600 text-white font-bold text-sm shadow-xl shadow-emerald-600/30 animate-in slide-in-from-top-4 duration-200">
           <CheckCircle2 className="w-5 h-5 shrink-0" />
-          <span>প্রোফাইল সংরক্ষিত হয়েছে</span>
+          <span>প্রোফাইল তথ্য সফলভাবে সংরক্ষিত হয়েছে!</span>
         </div>
       )}
 
@@ -197,233 +249,159 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       <div className="flex items-center justify-between gap-4">
         <button
           onClick={onBackToDashboard}
-          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-white border border-slate-200/80 bg-white/60 backdrop-blur-xs font-bold text-xs sm:text-sm shadow-2xs transition-all active:scale-98 cursor-pointer"
+          className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-slate-700 hover:text-slate-900 hover:bg-white border border-slate-200/90 bg-white/80 backdrop-blur-xs font-bold text-xs sm:text-sm shadow-2xs transition-all active:scale-98 cursor-pointer"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="w-4 h-4 text-blue-600" />
           <span>ড্যাশবোর্ডে ফিরুন</span>
         </button>
 
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200">
-          <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-          <span>ব্যক্তিগত ও নিরাপদ</span>
-        </div>
+        <h1 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+          শিক্ষার্থী প্রোফাইল (Profile)
+        </h1>
       </div>
 
-      {/* Profile Header Card */}
-      <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 p-6 sm:p-8 shadow-xs">
-        <div className="absolute top-0 right-0 -mt-6 -mr-6 w-36 h-36 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
-
-        <div className="relative flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
-          {/* Avatar (Google photo or first letter) */}
+      {/* SECTION 1: প্রোফাইল ছবি, নাম ও ইমেইল (Firebase Auth থেকে, ইমেইল শুধু দেখা যাবে) */}
+      <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-7 shadow-xs">
+        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
+          {/* Avatar (Firebase Auth photo or initial) */}
           <div className="relative shrink-0">
             {currentUser?.photoURL ? (
               <img
                 src={currentUser.photoURL}
                 alt={userDisplayName}
-                className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-md ring-2 ring-blue-200"
+                className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-md ring-2 ring-blue-200"
               />
             ) : (
-              <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-sky-500 text-white font-black text-3xl flex items-center justify-center border-4 border-white shadow-md ring-2 ring-blue-200">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-sky-500 text-white font-black text-2xl flex items-center justify-center border-4 border-white shadow-md ring-2 ring-blue-200">
                 {userInitials}
               </div>
             )}
-            <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-amber-400 text-amber-950 flex items-center justify-center font-black shadow-sm ring-2 ring-white">
-              <Crown className="w-4 h-4" />
-            </div>
           </div>
 
-          {/* Info & Badges */}
-          <div className="space-y-2 flex-1 min-w-0">
-            <div>
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+          {/* User info */}
+          <div className="space-y-1.5 flex-1 min-w-0">
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
                 {userDisplayName}
               </h2>
-              <p className="text-xs sm:text-sm text-slate-500 font-medium break-all mt-0.5">
-                {currentUser?.email}
-              </p>
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                {getProviderLabel()}
+              </span>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200">
-                <Crown className="w-3.5 h-3.5 text-amber-500" />
-                <span>{getRankTitle(progress.xp)}</span>
+            {/* Read-only email from Firebase Auth */}
+            <div className="inline-flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200/80">
+              <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="font-semibold break-all">
+                {currentUser?.email || 'ইমেইল সংযুক্ত নেই'}
               </span>
-
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-800 text-xs font-bold border border-amber-200">
-                <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-600" />
-                <span>{progress.xp} XP অর্জিত</span>
+              <span className="text-[10px] text-slate-400 font-medium ml-1 flex items-center gap-0.5">
+                <Lock className="w-3 h-3 text-slate-400" />
+                (শুধু প্রদর্শনযোগ্য)
               </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Profile Edit Form Card */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 sm:p-8 space-y-6">
-        <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h3 className="text-lg font-black text-slate-900">
-              প্রোফাইল আপডেট ও শিক্ষার্থীর বিবরণী
+      {/* SECTION 2 & 3: নাম/ডাকনাম Edit ও Save (২ থেকে ৩০ অক্ষর) এবং ঐচ্ছিক ফোন নম্বর */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs p-6 sm:p-7 space-y-5">
+        <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Edit3 className="w-4 h-4 text-blue-600" />
+            <h3 className="text-sm sm:text-base font-black text-slate-900">
+              প্রোফাইল তথ্য সম্পাদন
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              আপনার সঠিক তথ্য প্রদান করে প্রোফাইল হালনাগাদ বা পরিবর্তন করুন।
-            </p>
           </div>
-          <span className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200/80">
-            <User className="w-3.5 h-3.5 text-blue-600" />
-            <span>প্রোফাইল এডিটর</span>
+          <span className="text-[11px] font-semibold text-slate-400">
+            users ও leaderboard সিঙ্ক
           </span>
         </div>
 
         {isLoading ? (
-          <div className="py-12 flex flex-col items-center justify-center space-y-3">
-            <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-            <p className="text-xs text-slate-500 font-medium">প্রোফাইল তথ্য লোড হচ্ছে...</p>
+          <div className="py-8 flex flex-col items-center justify-center space-y-2">
+            <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+            <p className="text-xs text-slate-400 font-medium">তথ্য লোড হচ্ছে...</p>
           </div>
         ) : (
-          <form onSubmit={handleSave} className="space-y-5">
+          <form onSubmit={handleSave} className="space-y-4">
             {errors.form && (
-              <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
                 <span>{errors.form}</span>
               </div>
             )}
 
-            {/* Field: Full Name */}
+            {/* SECTION 2: নাম/ডাকনাম (২ থেকে ৩০ অক্ষর) */}
             <div className="space-y-1.5">
-              <label
-                htmlFor="profile-fullName"
-                className="block text-xs font-bold text-slate-700"
-              >
-                শিক্ষার্থীর পূর্ণ নাম <span className="text-rose-500">*</span>
-              </label>
+              <div className="flex items-center justify-between">
+                <label
+                  htmlFor="profile-name-input"
+                  className="block text-xs font-bold text-slate-700"
+                >
+                  নাম / ডাকনাম <span className="text-rose-500">*</span>
+                </label>
+                <span className="text-[11px] text-slate-400 font-medium">
+                  {name.length}/৩০ অক্ষর
+                </span>
+              </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                   <User className="w-4 h-4" />
                 </div>
                 <input
-                  id="profile-fullName"
+                  id="profile-name-input"
                   type="text"
-                  value={fullName}
+                  value={name}
+                  maxLength={30}
                   onChange={(e) => {
-                    setFullName(e.target.value);
-                    if (errors.fullName) setErrors((prev) => ({ ...prev, fullName: '' }));
+                    setName(e.target.value);
+                    if (errors.name) setErrors((prev) => ({ ...prev, name: '' }));
                   }}
-                  placeholder="যেমন: সাকিব আল হাসান"
-                  className={`w-full min-h-[44px] pl-10 pr-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 transition-all ${
-                    errors.fullName
+                  placeholder="যেমন: Tanvir_99 অথবা নিবিড়_পড়ুয়া"
+                  className={`w-full min-h-[44px] pl-10 pr-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 transition-all ${
+                    errors.name
                       ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-200'
                       : 'border-slate-200 focus:border-blue-500 focus:ring-blue-100'
                   }`}
                 />
               </div>
-              {errors.fullName && (
+              {errors.name ? (
                 <p className="text-xs text-rose-600 font-medium flex items-center gap-1 mt-1">
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>{errors.fullName}</span>
+                  <span>{errors.name}</span>
+                </p>
+              ) : (
+                <p className="text-[11px] text-slate-400">
+                  নাম বা ডাকনাম ২ থেকে ৩০ অক্ষরের হতে হবে। এটি লিডারবোর্ডেও প্রদর্শিত হবে।
                 </p>
               )}
             </div>
 
-            {/* Field: Institution */}
-            <div className="space-y-1.5">
-              <label
-                htmlFor="profile-institution"
-                className="block text-xs font-bold text-slate-700"
-              >
-                স্কুল / কলেজ / বিশ্ববিদ্যালয়ের নাম <span className="text-rose-500">*</span>
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <School className="w-4 h-4" />
-                </div>
-                <input
-                  id="profile-institution"
-                  type="text"
-                  value={institution}
-                  onChange={(e) => {
-                    setInstitution(e.target.value);
-                    if (errors.institution) setErrors((prev) => ({ ...prev, institution: '' }));
-                  }}
-                  placeholder="যেমন: ঢাকা কলেজ / রাজশাহী বিশ্ববিদ্যালয়"
-                  className={`w-full min-h-[44px] pl-10 pr-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 transition-all ${
-                    errors.institution
-                      ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-200'
-                      : 'border-slate-200 focus:border-blue-500 focus:ring-blue-100'
-                  }`}
-                />
-              </div>
-              {errors.institution && (
-                <p className="text-xs text-rose-600 font-medium flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>{errors.institution}</span>
-                </p>
-              )}
-            </div>
-
-            {/* Field: Class / Grade */}
-            <div className="space-y-1.5">
-              <label
-                htmlFor="profile-classLevel"
-                className="block text-xs font-bold text-slate-700"
-              >
-                শ্রেণি / ক্লাস <span className="text-rose-500">*</span>
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <GraduationCap className="w-4 h-4" />
-                </div>
-                <select
-                  id="profile-classLevel"
-                  value={classLevel}
-                  onChange={(e) => {
-                    setClassLevel(e.target.value as ClassLevel);
-                    if (errors.classLevel) setErrors((prev) => ({ ...prev, classLevel: '' }));
-                  }}
-                  className={`w-full min-h-[44px] pl-10 pr-8 py-2.5 bg-slate-50 border rounded-xl text-sm font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-2 transition-all cursor-pointer ${
-                    errors.classLevel
-                      ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-200'
-                      : 'border-slate-200 focus:border-blue-500 focus:ring-blue-100'
-                  }`}
-                >
-                  <option value="">শ্রেণি / শিক্ষাস্তর নির্বাচন করুন</option>
-                  {CLASS_LEVEL_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {errors.classLevel && (
-                <p className="text-xs text-rose-600 font-medium flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>{errors.classLevel}</span>
-                </p>
-              )}
-            </div>
-
-            {/* Field: Phone (Optional but validated) */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
+            {/* SECTION 3: ঐচ্ছিক ফোন নম্বর (বাংলাদেশি ফরম্যাট, ০১ দিয়ে শুরু, ১১ ডিজিট) */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
                 <label
-                  htmlFor="profile-phone"
+                  htmlFor="profile-phone-input"
                   className="block text-xs font-bold text-slate-700"
                 >
-                  মোবাইল নম্বর
+                  ফোন নম্বর <span className="text-slate-400 font-normal">(ঐচ্ছিক)</span>
                 </label>
-                <span className="text-[11px] text-slate-400 font-medium">ঐচ্ছিক (Optional)</span>
+                <span className="text-[11px] text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200 font-bold">
+                  এই নম্বর শুধু আপনি দেখতে পাবেন।
+                </span>
               </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                   <Phone className="w-4 h-4" />
                 </div>
                 <input
-                  id="profile-phone"
+                  id="profile-phone-input"
                   type="tel"
                   value={phone}
                   onChange={(e) => handlePhoneChange(e.target.value)}
                   placeholder="01XXXXXXXXX (যেমন: 01712345678)"
-                  className={`w-full min-h-[44px] pl-10 pr-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 transition-all ${
+                  className={`w-full min-h-[44px] pl-10 pr-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 transition-all ${
                     errors.phone
                       ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-200'
                       : 'border-slate-200 focus:border-blue-500 focus:ring-blue-100'
@@ -437,42 +415,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </p>
               ) : (
                 <p className="text-[11px] text-slate-400">
-                  বাংলা বা ইংরেজি সংখ্যায় ১১ ডিজিটের বাংলাদেশি নম্বর দেওয়া যাবে।
+                  ০১ দিয়ে শুরু ১১ ডিজিটের নম্বর। শুধু users/{currentUser?.uid}-এর phone ফিল্ডে সেভ হবে, leaderboard-এ কখনো নয়।
                 </p>
               )}
             </div>
 
-            {/* Field: Email (Read-Only) */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label
-                  htmlFor="profile-email"
-                  className="block text-xs font-bold text-slate-700"
-                >
-                  ইমেইল ঠিকানা
-                </label>
-                <span className="text-[11px] text-slate-400 font-medium">পরিবর্তনযোগ্য নয়</span>
-              </div>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Mail className="w-4 h-4" />
-                </div>
-                <input
-                  id="profile-email"
-                  type="email"
-                  value={currentUser?.email || ''}
-                  disabled
-                  className="w-full min-h-[44px] pl-10 pr-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-medium text-slate-500 cursor-not-allowed select-none"
-                />
-              </div>
-            </div>
-
-            {/* Submit Button */}
+            {/* Save Button */}
             <div className="pt-2">
               <button
                 type="submit"
                 disabled={isSaving}
-                className="w-full min-h-[44px] px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm sm:text-base shadow-md shadow-blue-600/20 active:scale-98 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
+                className="w-full min-h-[44px] px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm shadow-md shadow-blue-600/20 active:scale-98 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 {isSaving ? (
                   <>
@@ -482,26 +435,107 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 ) : (
                   <>
                     <Save className="w-4 h-4" />
-                    <span>সংরক্ষণ করুন</span>
+                    <span>সংরক্ষণ করুন (Save)</span>
                   </>
                 )}
               </button>
             </div>
           </form>
         )}
+      </div>
 
-        {/* Divider */}
-        <div className="pt-4 border-t border-slate-100">
-          {/* Nice Red-Outlined Logout Button */}
-          <button
-            type="button"
-            onClick={onRequestLogout}
-            className="w-full min-h-[44px] px-4 py-3 rounded-xl border-2 border-rose-200 hover:border-rose-400 bg-rose-50/50 hover:bg-rose-50 text-rose-600 font-bold text-sm transition-all active:scale-98 cursor-pointer flex items-center justify-center gap-2.5"
-          >
-            <LogOut className="w-4 h-4 text-rose-600" />
-            <span>লগআউট করুন</span>
-          </button>
+      {/* SECTION 4: পরিসংখ্যান: মোট XP, সম্পন্ন লেভেল, সম্পন্ন বাক্য, streak */}
+      <div className="space-y-2">
+        <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 px-1">
+          শেখার অগ্রগতি ও পরিসংখ্যান (Statistics)
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* Stat 1: মোট XP */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 text-center sm:text-left space-y-1 shadow-2xs">
+            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto sm:mx-0">
+              <Zap className="w-4 h-4 fill-current" />
+            </div>
+            <div className="text-lg sm:text-xl font-black text-slate-900 mt-2">
+              {progress.xp} XP
+            </div>
+            <div className="text-[11px] font-bold text-slate-500">
+              মোট XP
+            </div>
+          </div>
+
+          {/* Stat 2: সম্পন্ন লেভেল */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 text-center sm:text-left space-y-1 shadow-2xs">
+            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto sm:mx-0">
+              <Trophy className="w-4 h-4" />
+            </div>
+            <div className="text-lg sm:text-xl font-black text-slate-900 mt-2">
+              {levelCompleted}/৫
+            </div>
+            <div className="text-[11px] font-bold text-slate-500">
+              সম্পন্ন লেভেল
+            </div>
+          </div>
+
+          {/* Stat 3: সম্পন্ন বাক্য */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 text-center sm:text-left space-y-1 shadow-2xs">
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto sm:mx-0">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+            <div className="text-lg sm:text-xl font-black text-slate-900 mt-2">
+              {completedSentencesCount}টি
+            </div>
+            <div className="text-[11px] font-bold text-slate-500">
+              সম্পন্ন বাক্য
+            </div>
+          </div>
+
+          {/* Stat 4: Streak */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 text-center sm:text-left space-y-1 shadow-2xs">
+            <div className="w-8 h-8 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center mx-auto sm:mx-0">
+              <Flame className="w-4 h-4 fill-current" />
+            </div>
+            <div className="text-lg sm:text-xl font-black text-slate-900 mt-2">
+              {progress.streakCount} দিন
+            </div>
+            <div className="text-[11px] font-bold text-slate-500">
+              Streak
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* SECTION 5: 'অগ্রগতি ও স্কোর রিসেট' বাটন পেজের একদম নিচে আলাদা 'বিপজ্জনক অংশে' */}
+      <div className="bg-rose-50/50 rounded-3xl border-2 border-rose-200/90 p-5 sm:p-6 space-y-4">
+        <div className="flex items-center gap-2 text-rose-700">
+          <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+          <h3 className="font-black text-sm sm:text-base text-rose-900">
+            বিপজ্জনক অংশ (Danger Zone)
+          </h3>
+        </div>
+        <p className="text-xs text-rose-700/90 leading-relaxed">
+          আপনার সমস্ত অনুবাদ, পয়েন্ট (XP), এবং শেখার অগ্রগতি শূন্যে রিসেট করতে পারবেন। এই কাজটি সম্পন্ন হলে পূর্বের অগ্রগতি পুনরুদ্ধার করা যাবে না।
+        </p>
+
+        <button
+          type="button"
+          onClick={handleResetClick}
+          className="w-full min-h-[44px] px-4 py-2.5 rounded-xl border border-rose-300 hover:border-rose-400 bg-white hover:bg-rose-50 text-rose-700 font-extrabold text-xs sm:text-sm transition-all active:scale-98 cursor-pointer flex items-center justify-center gap-2 shadow-2xs"
+        >
+          <RotateCcw className="w-4 h-4 text-rose-600" />
+          <span>অগ্রগতি ও স্কোর রিসেট করুন</span>
+        </button>
+      </div>
+
+      {/* SECTION 6: লগআউট বাটন */}
+      <div className="pt-1">
+        <button
+          type="button"
+          onClick={onRequestLogout}
+          className="w-full min-h-[46px] px-4 py-3 rounded-2xl border border-slate-300 hover:border-rose-300 bg-white hover:bg-rose-50/50 text-rose-600 font-extrabold text-sm transition-all active:scale-98 cursor-pointer flex items-center justify-center gap-2 shadow-2xs"
+        >
+          <LogOut className="w-4 h-4 text-rose-600" />
+          <span>লগআউট করুন</span>
+        </button>
       </div>
     </div>
   );
